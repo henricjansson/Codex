@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face to ASCII</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #000;
+            color: #0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        video {
+            display: none;
+        }
+        pre {
+            line-height: 80%;
+            font-size: 8px;
+            text-shadow: 0 0 5px #0f0;
+        }
+    </style>
+</head>
+<body>
+    <video id="video" autoplay playsinline></video>
+    <pre id="ascii"></pre>
+
+    <!-- Face API library -->
+    <script defer src="https://unpkg.com/face-api.js"></script>
+    <script>
+        const video = document.getElementById('video');
+        const asciiPre = document.getElementById('ascii');
+        const asciiChars = " .:-=+*#%@";
+        const asciiWidth = 60; // width of ASCII output
+
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                return new Promise(resolve => video.onloadedmetadata = resolve);
+            } catch (err) {
+                alert('Could not access webcam.');
+            }
+        }
+
+        async function loadModels() {
+            const MODEL_URL = 'https://unpkg.com/face-api.js/models';
+            await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        }
+
+        function frameToAscii(ctx, box) {
+            const { x, y, width, height } = box;
+            const targetHeight = Math.round(asciiWidth * (height / width));
+            const tmpCanvas = document.createElement('canvas');
+            tmpCanvas.width = asciiWidth;
+            tmpCanvas.height = targetHeight;
+            const tmpCtx = tmpCanvas.getContext('2d');
+            tmpCtx.drawImage(ctx.canvas, x, y, width, height, 0, 0, asciiWidth, targetHeight);
+            const imgData = tmpCtx.getImageData(0, 0, asciiWidth, targetHeight).data;
+            let asciiStr = '';
+            for (let i = 0; i < imgData.length; i += 4) {
+                const r = imgData[i];
+                const g = imgData[i + 1];
+                const b = imgData[i + 2];
+                const brightness = (r + g + b) / 3;
+                const charIndex = Math.floor(brightness / 256 * asciiChars.length);
+                asciiStr += asciiChars[charIndex];
+                if (((i / 4) + 1) % asciiWidth === 0) asciiStr += '\n';
+            }
+            return asciiStr;
+        }
+
+        async function start() {
+            await setupCamera();
+            await loadModels();
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+
+            async function render() {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const detections = await faceapi.detectAllFaces(canvas, new faceapi.TinyFaceDetectorOptions());
+                if (detections.length > 0) {
+                    const box = detections[0].box;
+                    const ascii = frameToAscii(ctx, box);
+                    asciiPre.textContent = ascii;
+                } else {
+                    asciiPre.textContent = '';
+                }
+                requestAnimationFrame(render);
+            }
+            render();
+        }
+
+        window.onload = start;
+    </script>
+</body>
+</html>
